@@ -1,5 +1,7 @@
 # FeederFleet
 
+### 🔗 Live demo: **[feederfleet.vercel.app](https://feederfleet.vercel.app)**
+
 **Turn distributed home batteries into feeder flexibility.**
 Find the batteries that can safely help the grid — right where the network needs them.
 
@@ -98,7 +100,10 @@ Model: 500 battery homes · 12 DTs · 103 VPP-controllable lithium batteries (a 
 **Try this:** on the Community tab, open *"Try it · homeowner reserve"* and raise home #58's reserve to 80 %.
 FeederFleet drops #58, calls the standby home #312 instead, DT-10 still stays at 90 %, and #58 is paid ₹0 — because it delivered nothing.
 
-Handy links once it is running:
+Handy links (live site):
+[Community story](https://feederfleet.vercel.app/?view=community) · [DISCOM view](https://feederfleet.vercel.app/?view=discom) · [Home #137](https://feederfleet.vercel.app/?view=home&home=137) · [Reserve demo](https://feederfleet.vercel.app/?view=community&res=58:0.8)
+
+The same links work locally:
 `?view=community&s=31` (jump to second 31 of the story) · `?view=discom` · `?view=home&home=312` · `?res=58:0.8` (preset a reserve)
 
 ## Run it on your computer
