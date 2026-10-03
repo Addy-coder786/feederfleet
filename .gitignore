@@ -1,0 +1,6 @@
+node_modules/
+dist/
+artifact-entry.html
+*.log
+.vercel
+.DS_Store

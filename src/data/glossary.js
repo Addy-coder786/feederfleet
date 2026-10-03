@@ -1,0 +1,23 @@
+// Hover explanations. Keep each short and plain.
+export const GLOSSARY = {
+  DT: 'Distribution Transformer — the street transformer serving nearby homes (35–50 here). Usually the first thing to overload.',
+  SOC: 'State of Charge — how full the battery is.',
+  HEMS: 'Home Energy Management System — the local controller (gateway) that talks to the inverter.',
+  CT: 'Current Transformer — a clip-on sensor measuring power flowing in or out of the home.',
+  RESERVE: 'Energy protected for the homeowner (backup for power cuts). The VPP never uses it.',
+  FLEX: 'Flexibility — battery power the VPP can safely request right now, above the reserve.',
+  VPP: 'Virtual Power Plant — software that coordinates many small batteries as one grid resource.',
+  FEEDER: '11 kV feeder — the medium-voltage line from the substation to the street transformers.',
+  LT: 'LT network — the low-voltage (415/230 V) street wires connecting homes to their DT.',
+  INVERTER: 'Hybrid inverter — converts solar DC to AC and charges/discharges the battery.',
+  DISCOM: 'Distribution company — the utility that owns the wires and meters.',
+  GATEWAY: 'Small box at home linking the inverter to the VPP. If the internet drops it falls back to safe self-use.',
+  REVERSE: 'Reverse power flow — surplus solar pushing power backwards from homes towards the substation.',
+  KWKWH: 'kW = power (a rate). kWh = energy (an amount). 2 kW for 1 hour = 2 kWh.',
+  NETMETER: 'Net metering — exported solar is credited on the electricity bill. Separate from VPP payments.',
+  BASELINE: 'What the battery would have done anyway. Verified delivery = actual − baseline.',
+  CURTAIL: 'Curtailment — turning solar output down. Last resort when batteries and flexible loads are full.',
+  MONITOR: 'Monitor-only — the VPP can see this battery but cannot control it (e.g. lead-acid inverter UPS).',
+  SETTLE: 'Settlement — measuring what each home delivered and paying for verified kWh.',
+  MV: 'Measurement & verification — checking delivery against a baseline and the smart meter.',
+}

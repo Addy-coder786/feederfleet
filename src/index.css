@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+html { scroll-behavior: smooth; }
+
+body {
+  @apply bg-ink text-fgb font-sans antialiased;
+}
+
+h1, h2, h3, h4 { font-family: 'Archivo', 'IBM Plex Sans', system-ui, sans-serif; color: #163a28; text-wrap: balance; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #f1f5f0; }
+::-webkit-scrollbar-thumb { background: #c9d6ca; border-radius: 6px; }
+
+/* ---- energy particles along an SVG path (offset-path set inline) ---- */
+.particle {
+  offset-rotate: 0deg;
+  animation: travel var(--dur, 2.8s) linear infinite;
+  animation-delay: var(--delay, 0s);
+}
+.particle-rev { animation-direction: reverse; }
+@keyframes travel {
+  0%   { offset-distance: 0%; opacity: 0; }
+  10%  { opacity: 0.95; }
+  90%  { opacity: 0.95; }
+  100% { offset-distance: 100%; opacity: 0; }
+}
+
+.pulse { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+.ring-pulse { animation: ringPulse 1.8s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes ringPulse { 0% { transform: scale(0.8); opacity: 0.9; } 100% { transform: scale(1.6); opacity: 0; } }
+
+.fadein { animation: fadein 0.45s ease-out both; }
+@keyframes fadein { from { transform: translateY(6px); } to { transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .particle, .pulse, .ring-pulse, .fadein { animation: none; }
+}
+
+.term { @apply cursor-help border-b border-dotted border-grid/50; }
+
+.card { @apply rounded-2xl border border-line bg-panel shadow-card; }
+
+.badge {
+  @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider;
+}
+
+.sim-badge {
+  @apply inline-flex items-center gap-1 rounded-full border border-solar/40 bg-solar/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#8a5d0f];
+}
+
+input[type='range'].timebar {
+  -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px;
+  background: linear-gradient(90deg, #f2d9a6 0%, #f4e7c3 25%, #e9f2e6 50%, #f0dcc0 72%, #54705f 86%, #1f3a2b 100%);
+}
+input[type='range'].timebar::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+  background: #ffffff; border: 3px solid #1f6b45; box-shadow: 0 1px 4px rgba(0,0,0,0.2); cursor: pointer;
+}
+input[type='range'].timebar::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%; background: #ffffff; border: 3px solid #1f6b45; cursor: pointer;
+}
+
+.ring-soft { animation: ringSoft 1.6s ease-in-out infinite; }
+@keyframes ringSoft { 0%, 100% { stroke-opacity: 1; } 50% { stroke-opacity: 0.35; } }
+.pulse-strong { animation: pulseStrong 1.2s ease-in-out infinite; }
+@keyframes pulseStrong { 0%, 100% { opacity: 1; } 50% { opacity: 0.72; } }
+.dash-move { animation: dashMove 1s linear infinite; }
+@keyframes dashMove { to { stroke-dashoffset: -22; } }
+@media (prefers-reduced-motion: reduce) { .ring-soft, .pulse-strong, .dash-move { animation: none; } }
+html, body, #root { height: 100%; }
+.inp { @apply rounded-md border border-line bg-white px-2 py-1.5 text-sm font-medium normal-case tracking-normal text-fg outline-none focus:border-grid; }
