@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import CommunityMap, { W, VB_Y, VB_H } from '../components/CommunityMap.jsx'
-import { DT_RATING, DT_HOMES, SPECIAL, N_HOMES } from '../sim/engine.js'
+import { DT_RATING, DT_HOMES, SPECIAL, N_HOMES, dtLoadPct, EVENT_TARGET, offlineSince, PF } from '../sim/engine.js'
+import { FEEDER_LABEL, SIM_DISCLAIMER } from '../config/pilot.js'
 import { stepOf, fmtHr, homeEnergy, statusOf, STATUS_META, ENERGY_STATE, availOf, dtTone } from '../sim/model.js'
 import { DEMO_LEN, phaseAt, TONES, FLOW, flowIdx, secAt, hourAt } from '../story.js'
 import { payFor, RATE_PER_KWH } from '../data/econ.js'
 import Term from '../components/Term.jsx'
 import { SimBadge } from '../components/ui.jsx'
+import VppInterface from '../components/VppInterface.jsx'
 
 const FILTERS = [
   ['all', 'All'], ['surplus', '☀️ Surplus'], ['deficit', '🔴 Deficit'], ['charging', 'Charging'],
@@ -27,7 +29,7 @@ export default function CommunityPage({ sim, demo, onOpenHome, setReserve, reset
 
   const rowById = useMemo(() => Object.fromEntries(ev.match.rows.map(r => [r.id, r])), [ev])
   const eligible = useMemo(() => ev.match.rows.filter(r => r.allocKw > 0), [ev])
-  const fpkPct = Math.round(100 * ev.forecastPeakKw / DT_RATING[ev.dt])
+  const fpkPct = Math.round(dtLoadPct(ev.forecastPeakKw, ev.dt))
   const fpkHr = fmtHr(ev.forecastPeakStep * 0.25)
 
   // ---- story state ----
@@ -48,8 +50,8 @@ export default function CommunityPage({ sim, demo, onOpenHome, setReserve, reset
   const requestedIds = on(32, 45) ? new Set(eligible.map(r => r.id)) : null
   const dataLinks = on(29.6, 36) ? eligible.map(r => r.id) : null
 
-  const wo = 100 * sim.without.steps[stepIdx].dtNet[ev.dt] / DT_RATING[ev.dt]
-  const wi = 100 * step.dtNet[ev.dt] / DT_RATING[ev.dt]
+  const wo = dtLoadPct(sim.without.steps[stepIdx].dtNet[ev.dt], ev.dt)
+  const wi = dtLoadPct(step.dtNet[ev.dt], ev.dt)
   const dtDisplay = {}
   if (on(15.5, 35)) dtDisplay[ev.dt] = { pct: wi, tone: dtTone(wi), forecast: `⚠ Forecast ${fpkPct}% at ${fpkHr}` }
   else if (on(35, 52)) {
@@ -58,7 +60,7 @@ export default function CommunityPage({ sim, demo, onOpenHome, setReserve, reset
     dtDisplay[ev.dt] = { pct: shown, tone: dtTone(shown), ghost: wo > wi + 1.5 ? `without VPP: ${wo.toFixed(0)}%` : null }
   }
   const callouts = on(6.5, 15) ? [{ id: SPECIAL.FULL, text: `#${SPECIAL.FULL} battery full — can’t absorb more` }] : []
-  const vppLabel = sec < 24 ? 'finding flexibility…' : sec < 32 ? 'matching homes · DT-10' : sec < 45 ? 'dispatching · DT-10' : sec < 52 ? 'verifying delivery' : sec < 57 ? 'settling payments' : 'replanning for tomorrow'
+  const vppLabel = sec < 24 ? 'finding flexibility…' : sec < 32 ? `matching homes · DT-${ev.dt + 1}` : sec < 45 ? `dispatching · DT-${ev.dt + 1}` : sec < 52 ? 'verifying delivery' : sec < 57 ? 'settling payments' : 'replanning for tomorrow'
 
   // counts across ALL simulated homes for the filter chips
   const counts = useMemo(() => {
@@ -85,7 +87,7 @@ export default function CommunityPage({ sim, demo, onOpenHome, setReserve, reset
           <p className="text-[13px] leading-snug text-fgb">Find the batteries that can safely help the grid — right where the network needs them.</p>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <span className="hidden text-xs text-dim lg:inline">Hypothetical Gujarat 11 kV feeder — simulated</span>
+          <span className="hidden text-xs text-dim lg:inline">{FEEDER_LABEL} — simulated</span>
           <button onClick={demo.running ? demo.pause : demo.start}
             className="rounded-md bg-grid px-5 py-2.5 text-sm font-bold text-white shadow-card transition hover:brightness-110">
             {demo.running ? '❚❚ Pause' : !started || sec >= DEMO_LEN ? '▶ Start demo' : '▶ Resume'}
@@ -144,15 +146,15 @@ export default function CommunityPage({ sim, demo, onOpenHome, setReserve, reset
               <div className="relative m-2 md:absolute md:m-0 md:left-1/2 md:top-[13%] md:w-[min(94%,780px)] md:-translate-x-1/2"><div className="fadein rounded-lg border border-grid/30 bg-white p-4 shadow-glow">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-grid">Result · one evening</span>
-                  <span className="text-[10.5px] font-semibold text-[#7a520c]">SIMULATED — NOT MEASURED FROM A LIVE GUJARAT FEEDER</span>
+                  <span className="text-[10.5px] font-semibold text-[#7a520c]">{SIM_DISCLAIMER} · {sim.scenario.name}</span>
                   <SimBadge className="ml-auto" />
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <Res k="Evening peak" a={`${A.peakKw.toFixed(0)} kW`} b={`${B.peakKw.toFixed(0)} kW`} d={`↓ ${(100 * (1 - B.peakKw / A.peakKw)).toFixed(1)}%`} />
                   <Res k="Reverse-flow peak" a={`−${Math.abs(A.reverseKw).toFixed(0)}`} b={`−${Math.abs(B.reverseKw).toFixed(0)} kW`} d={`↓ ${(100 * (1 - B.reverseKw / A.reverseKw)).toFixed(1)}%`} />
-                  <Res k={`Worst DT (DT-${A.worstDt + 1})`} a={`${A.maxDtPct.toFixed(0)}%`} b={`${B.maxDtPct.toFixed(0)}%`} d="back under rating" />
+                  <Res k={`Worst DT (DT-${A.worstDt + 1})`} a={`${A.maxDtPct.toFixed(0)}%`} b={`${B.maxDtPct.toFixed(0)}%`} d={B.maxDtPct <= 100.5 ? 'back under rating' : 'still above rating — shortfall flagged'} />
                 </div>
-                {sec >= 52 && (
+                {sec >= 52 && s137 && (
                   <div className="fadein mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2.5 text-sm">
                     <span className="font-semibold text-grid">✓ Verified</span>
                     <span className="text-fgb">Home #{s137.homeId} delivered <b className="font-mono">{s137.deliveredKwh.toFixed(2)} kWh</b> above its <Term k="BASELINE">baseline</Term> →</span>
@@ -177,6 +179,9 @@ export default function CommunityPage({ sim, demo, onOpenHome, setReserve, reset
           <TryReserve sim={sim} setReserve={setReserve} resetReserves={resetReserves} overrides={overrides} />
           <Timeline sim={sim} sec={started ? sec : -1} ev={ev} eligible={eligible} fpkPct={fpkPct} fpkHr={fpkHr} />
         </div>
+
+        {/* how the VPP works: sensors → algorithm → actions */}
+        <VppInterface sim={sim} />
       </div>
     </div>
   )
@@ -191,7 +196,7 @@ const Res = ({ k, a, b, d }) => (
 )
 
 function MatchCard({ sec, ev, rowById, eligible, fpkPct, fpkHr, wo, wi, sim }) {
-  const rules = ['Same DT (DT-10)', 'Online (heartbeat)', 'Above owner reserve', 'Inverter can discharge', 'Enough energy for the event']
+  const rules = [`Same DT (DT-${ev.dt + 1})`, 'Online (heartbeat)', 'Above owner reserve', 'Inverter can discharge', 'Enough energy for the event']
   const rulesShown = Math.min(rules.length, Math.floor((sec - 20.4) / 0.7) + 1)
   const monitor = ev.match.rows.filter(r => r.verdict === 'monitor').length
   const dispatching = sec >= 32
@@ -199,11 +204,11 @@ function MatchCard({ sec, ev, rowById, eligible, fpkPct, fpkHr, wo, wi, sim }) {
   return (
     <div className="fadein relative m-2 md:absolute md:m-0 md:left-[1.2%] md:top-[13%] md:w-[min(40%,320px)] rounded-lg border border-line bg-white p-3.5 text-sm shadow-glow">
       <div className="flex items-center gap-2">
-        <span className="rounded bg-[#fbe9e5] px-1.5 py-0.5 font-mono text-[11px] font-bold text-alert">DT-10</span>
+        <span className="rounded bg-[#fbe9e5] px-1.5 py-0.5 font-mono text-[11px] font-bold text-alert">DT-{ev.dt + 1}</span>
         <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-dim">{dispatching ? 'Event active' : 'Dispatch request'}</span>
       </div>
       <div className="mt-1 font-mono text-[15px] font-bold text-fg">Needs {ev.requiredKw} kW · {fmtHr(ev.startStep / 4)}–{fmtHr(ev.endStep / 4)}</div>
-      <div className="text-[11px] text-dim">forecast {fpkPct}% at {fpkHr} → hold at 90% · {ev.hours * 60} min</div>
+      <div className="text-[11px] text-dim">forecast {fpkPct}% of kVA rating at {fpkHr} → target {Math.round(EVENT_TARGET * 100)}% · {ev.hours * 60} min</div>
 
       {!dispatching && (
         <>
@@ -236,7 +241,7 @@ function MatchCard({ sec, ev, rowById, eligible, fpkPct, fpkHr, wo, wi, sim }) {
                 )
               })}
               {sec >= REVEAL0 + STORY_ORDER.length * REVEAL_DT && (
-                <div className="fadein text-[11px] text-dim">+ {monitor} monitor-only batteries under DT-10 (<Term k="MONITOR">not controllable</Term>)</div>
+                <div className="fadein text-[11px] text-dim">+ {monitor} monitor-only batteries under DT-{ev.dt + 1} (<Term k="MONITOR">not controllable</Term>)</div>
               )}
             </div>
           )}
@@ -245,6 +250,7 @@ function MatchCard({ sec, ev, rowById, eligible, fpkPct, fpkHr, wo, wi, sim }) {
               <div className="text-xs font-bold text-grid">Eligible flexibility found</div>
               <div className="font-mono text-sm font-bold text-fg">Matched {ev.match.matchedKw.toFixed(1)} kW <span className="font-normal text-dim">from {eligible.length} homes</span></div>
               <div className="text-[10.5px] text-dim">{ev.requiredKw} kW + 10% margin · local merit order (biggest safe offer first)</div>
+              {ev.match.shortfallKw > 0.05 && <div className="mt-1 text-[10.5px] font-semibold text-[#7a520c]">Short by {ev.match.shortfallKw.toFixed(1)} kW — not enough energy above owner reserves. Reserves are never broken to close the gap.</div>}
             </div>
           )}
         </>
@@ -256,16 +262,16 @@ function MatchCard({ sec, ev, rowById, eligible, fpkPct, fpkHr, wo, wi, sim }) {
 
 function EventMini({ sim, ev, sec, wo, wi, delivering }) {
   // DT-10 loading 19:00–23:30, without (dashed red) vs with (green), drawn to scale
-  const t0 = 76, t1 = 94, w = 290, h = 96, y0 = 30, y1 = 110
+  const t0 = 76, t1 = 94, w = 290, h = 96, y0 = 30
+  const y1 = Math.max(110, Math.ceil(dtLoadPct(ev.peakWithoutKw, ev.dt) / 5) * 5 + 5)
   const x = t => ((t - t0) / (t1 - t0)) * w
   const y = p => h - ((p - y0) / (y1 - y0)) * h
-  const r = DT_RATING[ev.dt]
-  const line = scen => sim[scen].steps.slice(t0, t1 + 1).map((s, k) => `${k ? 'L' : 'M'}${x(t0 + k).toFixed(1)},${y(100 * s.dtNet[ev.dt] / r).toFixed(1)}`).join(' ')
+  const line = scen => sim[scen].steps.slice(t0, t1 + 1).map((s, k) => `${k ? 'L' : 'M'}${x(t0 + k).toFixed(1)},${y(dtLoadPct(s.dtNet[ev.dt], ev.dt)).toFixed(1)}`).join(' ')
   const nowT = Math.min(t1, stepOf(hourAt(sec)))
   return (
     <div className="mt-2">
       <div className="mb-1 flex items-center justify-between text-xs">
-        <span className="font-semibold text-fg">DT-10 loading</span>
+        <span className="font-semibold text-fg">DT-{ev.dt + 1} loading (% of kVA)</span>
         <span className="font-mono text-grid">{sec >= 35 ? `batteries → ${delivering.toFixed(1)} kW` : 'holding charge'}</span>
       </div>
       <svg viewBox={`-26 -6 ${w + 34} ${h + 24}`} className="w-full">
@@ -294,8 +300,8 @@ function Inspector({ sim, card, pinned, step, stepIdx, hour, onClose, onOpenHome
   const left = `${Math.min(84, Math.max(16, (card.x / W) * 100))}%`
   const top = `${((card.y - VB_Y) / VB_H) * 100}%`
   if (card.dt != null) {
-    const pct = 100 * step.dtNet[card.dt] / DT_RATING[card.dt]
-    const wo = 100 * sim.without.steps[stepIdx].dtNet[card.dt] / DT_RATING[card.dt]
+    const pct = dtLoadPct(step.dtNet[card.dt], card.dt)
+    const wo = dtLoadPct(sim.without.steps[stepIdx].dtNet[card.dt], card.dt)
     const ctrl = sim.homes.filter(h => h.dt === card.dt && h.battery.controllable).length
     return (
       <div className="pointer-events-none absolute z-20 w-56 -translate-x-1/2 -translate-y-[108%] rounded-md border border-line bg-white p-3 text-xs shadow-glow" style={{ left, top }}>
@@ -413,6 +419,7 @@ function FlowRail({ sec }) {
 
 function Timeline({ sim, sec, ev, eligible, fpkPct, fpkHr }) {
   const log = sim.withVpp.log
+  const rowById = Object.fromEntries(ev.match.rows.map(r => [r.id, r]))
   const tOf = re => { const l = log.find(x => re.test(x.msg)); return l ? l.t * 0.25 : null }
   const absorbHr = tOf(/coordinated charging/)
   const rv = sim.withVpp.steps.reduce((b, s) => (s.feederNet < b.feederNet ? s : b))
@@ -424,12 +431,13 @@ function Timeline({ sim, sec, ev, eligible, fpkPct, fpkHr }) {
     [11.0, 'amber', `Home #${SPECIAL.FULL}: battery full — cannot absorb more`],
     absorbHr && [absorbHr, 'amber', 'Feeder export above envelope → coordinated charging, then flexible loads'],
     [rv.hr, 'amber', `Reverse-flow peak: ${Math.abs(rv.feederNet).toFixed(0)} kW back to the substation`],
-    [17.5, 'red', `Forecast: DT-10 at ${fpkPct}% at ${fpkHr} → event created`],
-    [19.0, 'grey', `Home #${SPECIAL.COMMS}: no heartbeat → safe local mode, delivery = 0`],
-    [19.0, 'grey', `Home #${SPECIAL.RESERVE}: skipped — owner reserve 85%`],
-    [19.5, 'green', `Matched ${ev.match.matchedKw.toFixed(1)} kW from ${eligible.length} homes under DT-10`],
-    [ev.activeStart * 0.25, 'green', 'Dispatch: DT-10 held at 90% of rating'],
-    [21.75, 'green', `Feeder peak held at ${pk.toFixed(0)} kW (without: ${sim.metrics.without.peakKw.toFixed(0)})`],
+    [17.5, 'red', `Forecast: DT-${ev.dt + 1} at ${fpkPct}% of kVA rating at ${fpkHr} → event created`],
+    rowById[SPECIAL.COMMS]?.verdict === 'offline' && [offlineSince(SPECIAL.COMMS), 'grey', `Home #${SPECIAL.COMMS}: no heartbeat → safe local mode, delivery = 0`],
+    rowById[SPECIAL.RESERVE]?.verdict === 'reserve' && [19.0, 'grey', `Home #${SPECIAL.RESERVE}: skipped — owner reserve ${Math.round(rowById[SPECIAL.RESERVE].reserve * 100)}%`],
+    [19.5, ev.match.shortfallKw > 0.05 ? 'amber' : 'green', `Matched ${ev.match.matchedKw.toFixed(1)} of ${ev.requiredKw} kW from ${eligible.length} homes under DT-${ev.dt + 1}${ev.match.shortfallKw > 0.05 ? ` — short by ${ev.match.shortfallKw.toFixed(1)} kW` : ''}`],
+    [ev.activeStart * 0.25, 'green', `Dispatch starts on DT-${ev.dt + 1} (closed loop on the DT meter)`],
+    ...ev.replans.map(rp => [rp.t * 0.25, rp.added.length ? 'amber' : 'red', `Home ${rp.droppedIds.map(i => '#' + i).join(', ')} stopped responding → replanned on live state: ${rp.added.length ? rp.added.map(a => `#${a.id} +${a.kw.toFixed(1)} kW`).join(', ') : 'no eligible home left'}`]),
+    [21.75, 'green', `DT-${ev.dt + 1} peak ${Math.round(dtLoadPct(ev.peakWithoutKw, ev.dt))}% → ${Math.round(dtLoadPct(ev.peakWithKw, ev.dt))}% of rating · feeder peak ${pk.toFixed(0)} kW (without: ${sim.metrics.without.peakKw.toFixed(0)})`],
     [ev.activeEnd * 0.25, 'grey', 'Event ended · recharge waits for tomorrow’s solar'],
     [23.25, 'green', `Verified: ${delivered.toFixed(1)} kWh delivered above baseline`],
     [23.5, 'green', `Settlement queued: ₹${paid.toFixed(2)} across ${ev.perHome.length} homes`],
@@ -506,7 +514,7 @@ function TryReserve({ sim, setReserve, resetReserves, overrides }) {
   return (
     <div className="rounded-lg border border-grid/30 bg-white p-3.5 shadow-card">
       <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-grid">Try it · homeowner reserve</div>
-      <p className="mt-0.5 text-[11.5px] leading-snug text-fgb">Raise a homeowner’s backup reserve. The matcher re-runs, drops the home if it can no longer help safely, and calls a standby home.</p>
+      <p className="mt-0.5 text-[11.5px] leading-snug text-fgb">Raise a homeowner’s backup reserve. The whole day re-runs: the matcher drops the home if it can no longer help safely, and other eligible homes cover what they can.</p>
       <div className="mt-2 flex items-center gap-2">
         <select value={id} onChange={e => { setId(+e.target.value); setDraft(null) }} className="inp py-1 text-xs" aria-label="Home">
           {ids.map(i => <option key={i} value={i}>Home #{i}</option>)}
@@ -523,7 +531,7 @@ function TryReserve({ sim, setReserve, resetReserves, overrides }) {
         <div className="flex justify-between gap-2"><span className="text-dim">Requested</span><span className="font-mono">{ev.requiredKw} kW</span></div>
         <div className="flex flex-wrap justify-between gap-x-2"><span className="text-dim">Matched</span><span className="font-mono">{ev.match.matchedKw.toFixed(1)} kW · {ev.match.rows.filter(r => r.allocKw > 0).map(r => '#' + r.id).join(' ')}</span></div>
         <div className="flex justify-between gap-2"><span className="text-dim">Delivered at peak</span><span className="font-mono">{(sim.without.steps[ev.forecastPeakStep].dtNet[ev.dt] - sim.withVpp.steps[ev.forecastPeakStep].dtNet[ev.dt]).toFixed(1)} kW</span></div>
-        <div className="flex justify-between gap-2"><span className="text-dim">DT-10 peak</span><span className="font-mono">{sim.metrics.without.maxDtPct.toFixed(0)}% → {((100 * ev.peakWithKw) / DT_RATING[ev.dt]).toFixed(0)}% {ev.peakWithKw <= 0.905 * DT_RATING[ev.dt] ? '✓' : ''}</span></div>
+        <div className="flex justify-between gap-2"><span className="text-dim">DT-{ev.dt + 1} peak (% of kVA, pf {PF})</span><span className="font-mono">{dtLoadPct(ev.peakWithoutKw, ev.dt).toFixed(0)}% → {dtLoadPct(ev.peakWithKw, ev.dt).toFixed(0)}% {dtLoadPct(ev.peakWithKw, ev.dt) <= EVENT_TARGET * 100 + 0.5 ? '✓' : ''}</span></div>
         <div className="flex justify-between gap-2"><span className="text-dim">Verified · paid</span><span className="font-mono">{mine ? `${mine.deliveredKwh.toFixed(2)} kWh → ₹${payFor(mine.deliveredKwh).toFixed(2)}` : '₹0 (not dispatched)'}</span></div>
       </div>
     </div>

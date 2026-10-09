@@ -1,5 +1,6 @@
 import { MONTHS, GANTT, GATE, BLOCKERS, RSRC } from '../data/roadmap.js'
 import { FUNDING } from '../data/funding.js'
+import { PILOT } from '../config/pilot.js'
 import { Tag, PanelTitle } from '../components/ui.jsx'
 
 const WEEKS = 13
@@ -10,7 +11,7 @@ export default function RoadmapPage() {
       <div className="flex flex-wrap items-end gap-3">
         <div>
           <h2 className="text-2xl font-extrabold">3-month pilot deployment roadmap</h2>
-          <p className="text-sm text-dim">27 September 2026 → 27 December 2026 · one DISCOM circle · 1–3 stressed DTs · 15–20 confirmed-compatible homes per DT</p>
+          <p className="text-sm text-dim">{MONTHS[0].dates.split('–')[0].trim()} → {MONTHS.at(-1).dates.split('–')[1].trim()} · {PILOT.short} · {PILOT.utility.short} (proposed) · 1–3 stressed DTs · 15–20 confirmed-compatible homes per DT</p>
         </div>
         <span className="ml-auto flex gap-1.5"><Tag t="FACT">Fact = source opened</Tag><Tag t="INFERENCE">Inference = our plan</Tag></span>
       </div>

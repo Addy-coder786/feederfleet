@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { DT_RATING, DT_HOMES, N_DT, SPECIAL } from '../sim/engine.js'
-import { stepOf, fmtHr, runMatch, dtTone, alertsAt, DEFAULT_THRESHOLDS, availOf, homeEnergy, statusOf, STATUS_META, ENERGY_STATE } from '../sim/model.js'
-import { DISCOM_VALUE } from '../data/econ.js'
+import { DT_RATING, DT_HOMES, N_DT, N_HOMES, dtLoadPct, PF } from '../sim/engine.js'
+import { stepOf, fmtHr, runMatch, dtTone, alertsAt, DEFAULT_THRESHOLDS, availOf, homeEnergy, statusOf, STATUS_META, ENERGY_STATE, isOffline, VERDICT_NOTE, perHomeNote } from '../sim/model.js'
+import { discomValue } from '../data/econ.js'
+import { FEEDER_LABEL } from '../config/pilot.js'
 import Ledger from '../components/Ledger.jsx'
 import Term from '../components/Term.jsx'
 import { SimBadge, PanelTitle, Kpi, Status, Tag } from '../components/ui.jsx'
@@ -20,7 +21,7 @@ export default function DiscomPage({ sim, demo }) {
 
   const fnet = step.feederNet
   const A = sim.metrics.without, B = sim.metrics.withVpp
-  const online = sim.homes.filter(h => h.battery.controllable && !(h.id === SPECIAL.COMMS && stepIdx >= 76))
+  const online = sim.homes.filter(h => h.battery.controllable && !isOffline(h, stepIdx / 4))
   const flexKwh = online.reduce((a, h) => a + availOf(h, step), 0)
   const flexKw = online.reduce((a, h) => a + Math.min(h.battery.maxDis, availOf(h, step)), 0)
   const alerts = useMemo(() => alertsAt(sim, stepIdx, th), [sim, stepIdx, th])
@@ -36,7 +37,7 @@ export default function DiscomPage({ sim, demo }) {
       <div className="flex flex-wrap items-center gap-3">
         <div>
           <h2 className="text-2xl font-extrabold">DISCOM control room</h2>
-          <p className="text-sm text-dim">Hypothetical 11 kV feeder · {N_DT} <Term k="DT">DTs</Term> · 500 homes · {sim.homes.filter(h => h.battery.controllable).length} VPP-controllable batteries</p>
+          <p className="text-sm text-dim">{FEEDER_LABEL} · {N_DT} <Term k="DT">DTs</Term> · {N_HOMES} homes · {sim.homes.filter(h => h.battery.controllable).length} VPP-controllable batteries · {sim.scenario.name}</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <div className="flex flex-wrap rounded-md border border-line bg-white p-0.5 text-xs font-semibold">
@@ -65,8 +66,8 @@ export default function DiscomPage({ sim, demo }) {
           <PanelTitle kicker="Where is the problem?" title="Distribution transformers" right={<span className="text-[11px] text-dim">loading now · forecast peak without VPP</span>} />
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: N_DT }, (_, d) => {
-              const pct = 100 * step.dtNet[d] / DT_RATING[d]
-              const fpk = Math.max(...sim.without.steps.map(s => 100 * s.dtNet[d] / DT_RATING[d]))
+              const pct = dtLoadPct(step.dtNet[d], d)
+              const fpk = Math.max(...sim.without.steps.map(s => dtLoadPct(s.dtNet[d], d)))
               const tone = dtTone(pct)
               const [st, lab] = TONE_LABEL[fpk > 100 && stepIdx < 90 && pct <= 100 ? 'red' : tone]
               return (
@@ -88,7 +89,7 @@ export default function DiscomPage({ sim, demo }) {
               )
             })}
           </div>
-          <p className="mt-2 text-[11px] text-dim">Negative % = power flowing back through the DT (reverse flow). Cards turn amber above 90 % or when exporting more than 40 % of rating, red above 100 %.</p>
+          <p className="mt-2 text-[11px] text-dim">Loading % = kW ÷ (kVA rating × assumed power factor {PF}). Negative % = power flowing back through the DT (reverse flow). Cards turn amber above 90 % or when exporting more than 40 % of rating, red above 100 %.</p>
         </div>
 
         <DtDetail sim={sim} d={sel} stepIdx={stepIdx} onDispatch={dispatch} />
@@ -100,32 +101,35 @@ export default function DiscomPage({ sim, demo }) {
 
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <Thresholds th={th} setTh={setTh} alerts={alerts} stepIdx={stepIdx} />
-        <ValueCard />
+        <ValueCard sim={sim} />
       </div>
 
       <div className="rounded-lg border border-line bg-white p-4 shadow-card">
-        <PanelTitle kicker="Did they help? · settlement" title={`Settlement ledger — DT-10 event, 27 Sep`} right={<SimBadge />} />
+        <PanelTitle kicker="Did they help? · settlement" title={`Settlement ledger — DT-${sim.hero.dt + 1} event, ${sim.scenario.dateLabel} (synthetic day)`} right={<SimBadge />} />
         <Ledger rows={eventLedger(sim)} />
       </div>
     </div>
   )
 }
 
+/** One row per controllable home on the event DT. Each home appears once → no double payment. */
 export function eventLedger(sim) {
   const ev = sim.hero
+  const date = sim.scenario.dateLabel
+  const event = `DT-${ev.dt + 1} evening support`
   const ids = ev.match.rows.filter(r => r.controllable).map(r => r.id).sort((a, b) => a - b)
   return ids.map(id => {
     const p = ev.perHome.find(x => x.id === id)
     const r = ev.match.rows.find(x => x.id === id)
-    if (p) return { date: '27 Sep', event: 'DT-10 evening support', home: id, kwh: p.deliveredKwh, status: 'verified' }
-    return { date: '27 Sep', event: 'DT-10 evening support', home: id, kwh: 0, status: r.verdict === 'offline' ? 'offline' : 'zero', note: r.verdict === 'offline' ? 'no heartbeat — safe local mode, counted as zero' : r.verdict === 'standby' ? 'standby — eligible, not needed tonight' : 'reserve protected — not asked to discharge' }
+    if (p) return { date, event, home: id, kwh: p.deliveredKwh, status: 'verified', note: perHomeNote(p, fmtHr) }
+    return { date, event, home: id, kwh: 0, status: r.verdict === 'offline' ? 'offline' : 'zero', note: VERDICT_NOTE[r.verdict] || '' }
   })
 }
 
 function Spark({ sim, d, now }) {
-  const w = 120, h = 26, r = DT_RATING[d]
+  const w = 120, h = 26
   const y = p => h / 2 - (p / 120) * (h / 2)
-  const pts = scen => sim[scen].steps.map((s, t) => `${t ? 'L' : 'M'}${(t / 95 * w).toFixed(1)},${y(100 * s.dtNet[d] / r).toFixed(1)}`).join(' ')
+  const pts = scen => sim[scen].steps.map((s, t) => `${t ? 'L' : 'M'}${(t / 95 * w).toFixed(1)},${y(dtLoadPct(s.dtNet[d], d)).toFixed(1)}`).join(' ')
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="mt-1 h-7 w-full" preserveAspectRatio="none">
       <line x1="0" x2={w} y1={y(0)} y2={y(0)} stroke="#dde6dd" />
@@ -149,15 +153,15 @@ function DtDetail({ sim, d, stepIdx, onDispatch }) {
   const cut = ev ? sim.without.steps[ev.forecastPeakStep].dtNet[d] - sim.withVpp.steps[ev.forecastPeakStep].dtNet[d] : 0
   return (
     <div className="rounded-lg border border-line bg-white p-4 shadow-card">
-      <PanelTitle kicker="Who can help? · did they help?" title={`DT-${String(d + 1).padStart(2, '0')} · ${r} kVA`} right={ev ? <Status tone="red">Event 27 Sep</Status> : <Status tone="green">No event needed</Status>} />
+      <PanelTitle kicker="Who can help? · did they help?" title={`DT-${String(d + 1).padStart(2, '0')} · ${r} kVA`} right={ev ? <Status tone="red">Event {sim.scenario.dateLabel}</Status> : <Status tone="green">No event needed</Status>} />
       <dl className="grid grid-cols-2 gap-x-4 text-sm">
         {[
           ['Connected homes', inDt.length],
           ['VPP-controllable', ctrl.length],
           [`Eligible now (${fmtHr(stepIdx / 4)})`, eligibleNow],
           ['Monitor-only', inDt.length - ctrl.length],
-          ['Peak without VPP', `${(100 * fpk / r).toFixed(0)}%`],
-          ['Peak with VPP', `${(100 * wpk / r).toFixed(0)}%`],
+          ['Peak without VPP', `${dtLoadPct(fpk, d).toFixed(0)}%`],
+          ['Peak with VPP', `${dtLoadPct(wpk, d).toFixed(0)}%`],
         ].map(([k, v]) => (
           <div key={k} className="flex justify-between border-b border-line/60 py-1.5"><dt className="text-dim">{k}</dt><dd className="font-mono font-semibold text-fg">{v}</dd></div>
         ))}
@@ -168,6 +172,12 @@ function DtDetail({ sim, d, stepIdx, onDispatch }) {
           <Box k="Matched" v={`${ev.match.matchedKw.toFixed(1)} kW`} s={`${ev.perHome.length} homes`} />
           <Box k="Delivered at peak" v={`${cut.toFixed(1)} kW`} s={`${Math.round(100 * cut / ev.requiredKw)}% of request`} good />
           <Box k="Verified energy" v={`${ev.deliveredKwh.toFixed(1)} kWh`} s="above baseline" good />
+          {ev.match.shortfallKw > 0.05 && <p className="col-span-full rounded-md border border-solar/40 bg-[#fdf6e6] p-2 text-left text-xs text-[#7a520c]"><b>Shortfall {ev.match.shortfallKw.toFixed(1)} kW at matching.</b> Not enough energy above owner reserves under this DT. Peak with VPP {dtLoadPct(ev.peakWithKw, d).toFixed(0)} % — flag for more enrolment, a voluntary AC nudge, or a DT upgrade. Reserves are never broken to close a gap.</p>}
+          {ev.replans.map(rp => (
+            <p key={rp.t} className="col-span-full rounded-md border border-line bg-panel2/60 p-2 text-left text-xs text-fgb">
+              <b>Replan {fmtHr(rp.t / 4)}:</b> {rp.droppedIds.map(i => '#' + i).join(', ')} stopped responding (−{rp.lostKw.toFixed(1)} kW). State refreshed, matching re-run for the remaining {Math.round(rp.hoursLeft * 60)} min → {rp.added.length ? rp.added.map(a => `#${a.id} +${a.kw.toFixed(1)} kW`).join(', ') : <b>no eligible home left</b>}{rp.shortfallKw > 0.05 && ` · ${rp.shortfallKw.toFixed(1)} kW not replaced`}.
+            </p>
+          ))}
         </div>
       ) : (
         <p className="mt-3 rounded-md bg-panel2 p-3 text-sm text-fgb">Forecast stays below 100 % of rating, so no batteries are asked to help. The fleet under this DT stays in normal self-use.</p>
@@ -327,8 +337,8 @@ function Thresholds({ th, setTh, alerts, stepIdx }) {
   )
 }
 
-function ValueCard() {
-  const v = DISCOM_VALUE
+function ValueCard({ sim }) {
+  const v = discomValue(sim.hero, sim.homes.filter(h => h.dt === sim.hero.dt && h.battery.controllable).length)
   const Col = ({ k, rows, total, good }) => (
     <div className={`rounded-md border p-2.5 ${good ? 'border-grid/30 bg-[#eef6f0]' : 'border-line'}`}>
       <div className="flex justify-between text-[10.5px] font-semibold uppercase tracking-wider text-dim"><span>{k}</span><span className="font-mono text-fg">₹{total.toLocaleString('en-IN')}</span></div>
@@ -344,7 +354,7 @@ function ValueCard() {
   )
   return (
     <div className="rounded-lg border border-line bg-white p-4 shadow-card">
-      <PanelTitle kicker="What the DISCOM gets" title="Value at one stressed DT (DT-10), per year" right={<Tag t="ESTIMATE" />} />
+      <PanelTitle kicker="What the DISCOM gets" title={`Value at one stressed DT (DT-${sim.hero.dt + 1}), per year`} right={<Tag t="ESTIMATE" />} />
       <div className="grid gap-2 sm:grid-cols-3">
         <Col k="Gets" rows={v.gets} total={v.getsT} good />
         <Col k="Pays homeowners" rows={v.pays} total={v.paysT} />

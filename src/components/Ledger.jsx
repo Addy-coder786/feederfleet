@@ -11,6 +11,7 @@ export default function Ledger({ rows, showHome = true, footer }) {
     pending: <span className="inline-flex items-center gap-1 rounded bg-[#fbf1dc] px-1.5 py-0.5 text-[11px] font-semibold text-[#7a520c]">PENDING</span>,
     zero: <span className="inline-flex items-center gap-1 rounded bg-panel2 px-1.5 py-0.5 text-[11px] font-semibold text-dim">NOT DISPATCHED</span>,
     offline: <span className="inline-flex items-center gap-1 rounded bg-[#fbe9e5] px-1.5 py-0.5 text-[11px] font-semibold text-[#9b3322]">OFFLINE · 0 kWh</span>,
+    example: <span className="inline-flex items-center gap-1 rounded border border-dashed border-solar/50 px-1.5 py-0.5 text-[11px] font-semibold text-[#7a520c]">EXAMPLE · synthetic</span>,
   }
   return (
     <div className="overflow-x-auto">
@@ -31,7 +32,7 @@ export default function Ledger({ rows, showHome = true, footer }) {
               {showHome && <td className="pr-3 text-fg">#{r.home}</td>}
               <td className="pr-3 text-right text-fg">{r.status === 'pending' ? '—' : `${r.kwh.toFixed(2)} kWh`}</td>
               <td className="pr-3 text-right text-dim">₹{RATE_PER_KWH}</td>
-              <td className="pr-3 text-right font-semibold text-fg">{r.status === 'verified' ? `₹${payFor(r.kwh).toFixed(2)}` : '₹0.00'}</td>
+              <td className="pr-3 text-right font-semibold text-fg">{r.status === 'verified' ? `₹${payFor(r.kwh).toFixed(2)}` : r.status === 'example' ? <span className="text-dim">(₹{payFor(r.kwh).toFixed(2)})</span> : '₹0.00'}</td>
               <td className="font-sans">{S[r.status]}</td>
             </tr>
           ))}
@@ -44,7 +45,7 @@ export default function Ledger({ rows, showHome = true, footer }) {
         </tfoot>
       </table>
       <p className="mt-2 text-[11px] text-dim">
-        {footer || <>Type: <b>VPP flexibility payment</b> for verified battery delivery · ₹{RATE_PER_KWH}/kWh is an illustrative pilot rate. Solar export credit (net metering) is settled separately on the DISCOM bill.</>}
+        {footer || <>Type: <b>VPP flexibility payment</b> for verified battery delivery · ₹{RATE_PER_KWH}/kWh is an illustrative pilot rate. Solar export credit (net metering) is settled separately on the electricity bill.</>}
       </p>
     </div>
   )

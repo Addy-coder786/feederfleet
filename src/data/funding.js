@@ -1,17 +1,21 @@
-// Pilot funding route — research/final_gaps/3_funding_route.md (FR-IN-001…008).
-// "DSM" here = Demand Side Management (not the Deviation Settlement Mechanism).
+// Pilot funding route — research/pune/2026-10-09_merc_msedcl_rules.md (ledger PUNE-R-*).
+// "DSM" = Demand Side Management. "DF" = Demand Flexibility. "DFPO" = Demand Flexibility Portfolio Obligation.
+// Pune ledger rows used here passed the independent fact-check of 2026-10-09
+// (research/verification/2026-10-09_pune_factcheck.md).
 export const FUNDING = {
   tag: 'FACT',
-  tagLabel: 'route verified · details partly',
+  tagLabel: 'route exists on paper · details partly verified',
   route: [
-    'Pilot: DISCOM / GUVNL own funds or a grant → MoU → homeowners paid directly (bank / UPI), outside the bill — no Gujarat rule found either way (inference)',
-    'Pilot results → a DSM programme document filed by the DISCOM → GERC approval before it starts (DSM Regulations 2012)',
-    'Paid DSM programme: DISCOM pays homes / vendor → claims actual DSM expenses in its ARR true-up (precedent: Torrent Power Surat, ₹0.08 cr approved)',
-    'Future: GERC demand-flexibility regulations (being drafted) + final BESS regulations → paid demand response through aggregators',
+    'Pilot: an MSEDCL-approved R&D pilot (MoU / letter) or a grant → homeowners paid directly (bank / UPI), outside the bill — no rule found either way (inference)',
+    'MERC DF & DSM Regulations 2024 oblige MSEDCL to hold demand flexibility of 1.5 % of last year’s peak (FY26–27), rising to 3.5 % by FY30; behind-the-meter batteries and aggregators are named (PUNE-R-012)',
+    'MERC has told MSEDCL to file a demand-flexibility plan and to run a battery pilot at distribution-substation level (MYT order, PUNE-R-002) — a natural home for a DT-level pilot (inference)',
+    'Approved DF / DSM programme costs are recovered through MSEDCL’s ARR; MERC sets ±₹0.20 crore per MW incentive / penalty around the DFPO target (PUNE-R-012)',
+    'Future: MERC draft BESS Regulations 2026 would let a “Lead ESS” aggregate consumer batteries for demand response — DRAFT, minimum 1 MW / 2 h to connect (PUNE-R-010)',
   ],
-  note: 'Verified: a GERC-approved DSM programme is recoverable through the ARR — DGVCL’s DSM expense line for FY26–30 is currently blank. Not verified: whether homeowner incentives qualify in Gujarat, and procurement rules for an aggregator. No Gujarat rule yet pays homes for battery discharge.',
+  note: 'Verified (source opened): the DFPO and the named role for behind-the-meter batteries and aggregators. Complication: the DFPO is counted state-wide, not per DT, and Maharashtra’s peak can fall in solar hours (farm pumping) — so a state DR event may not match a DT’s evening peak. No MSEDCL residential DR or battery pilot was found. DT upgrades are paid through all consumers’ tariffs, so MSEDCL’s own incentive to defer them is weak (inference).',
   sources: [
-    ['GERC order, Torrent Power Surat (Case 2427/2024, p.167)', 'https://www.torrentpower.com/public/pdf/regulatory/TPL-D_Surat__MYT_Order_in_Case_No._2427-2024.pdf'],
-    ['GERC tariff order, DGVCL FY 2025-26 (mirror copy)', 'https://peak-files.estonetech.in/peak-data-files/Dakshin%20Gujarat%20Vij%20Company%20Limited%20Retail%20Supply%20Tariff%20Order%202025-26.pdf'],
+    ['MERC DF & DSM Regulations 2024 (PUNE-R-012)', 'https://merc.gov.in/wp-content/uploads/2024/11/DSM-Regulations-English-and-Marathi.pdf'],
+    ['MERC MYT order, MSEDCL, Case 217 of 2024 (PUNE-R-002)', 'https://merc.gov.in/wp-content/uploads/2025/03/MSEDCL-MYT-Order_Case_no_217-of-2024.pdf'],
+    ['MERC draft BESS Regulations 2026 (PUNE-R-010)', 'https://merc.gov.in/wp-content/uploads/2026/09/4.-Draft_BESS-Regulations_2026.pdf'],
   ],
 }

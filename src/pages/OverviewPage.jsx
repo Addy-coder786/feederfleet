@@ -1,10 +1,12 @@
 import { GLOSSARY } from '../data/glossary.js'
 import { RATE_PER_KWH, RETAINER_YR, WEAR_FLOOR } from '../data/econ.js'
 import { WHY_NOW } from '../data/whynow.js'
+import { PILOT, FEEDER_LABEL } from '../config/pilot.js'
 import Term from '../components/Term.jsx'
 import { SimBadge, Tag } from '../components/ui.jsx'
 import { WorkDiagram, LoadCurveLoop } from '../components/OverviewDiagrams.jsx'
 import GridCompare from '../components/GridCompare.jsx'
+import HardwareLink from '../components/HardwareLink.jsx'
 
 const STEPS = [
   ['TARGET', 'Find the stressed DT', 'DT meters and forecasts show which transformer will overload, and when.'],
@@ -31,7 +33,7 @@ export default function OverviewPage({ sim, go, demo }) {
             <button onClick={() => go('discom')} className="rounded-md border border-line px-4 py-3 text-sm font-semibold text-fg hover:border-grid/40">DISCOM view</button>
             <button onClick={() => go('home')} className="rounded-md border border-line px-4 py-3 text-sm font-semibold text-fg hover:border-grid/40">Homeowner view</button>
           </div>
-          <p className="mt-4 text-xs text-dim">Hypothetical Gujarat 11 kV feeder — simulated. An India/Gujarat-focused integration of proven VPP, DER and demand-response mechanisms — not a new kind of VPP.</p>
+          <p className="mt-4 text-xs text-dim">{FEEDER_LABEL} — simulated. An India / Maharashtra-focused integration of proven VPP, DER and demand-response mechanisms — not a new kind of VPP. {PILOT.utility.short} is a proposed stakeholder: no live connection, no data access, no control of real equipment.</p>
         </div>
         <Architecture />
       </section>
@@ -59,6 +61,8 @@ export default function OverviewPage({ sim, go, demo }) {
         <WorkDiagram sim={sim} />
         <LoadCurveLoop sim={sim} />
       </section>
+
+      <HardwareLink />
 
       <section className="grid items-start gap-4 lg:grid-cols-3">
         <div className="rounded-lg border border-line bg-white p-4 shadow-card">
@@ -119,7 +123,7 @@ export default function OverviewPage({ sim, go, demo }) {
               <p>delivered kWh = (event discharge − baseline) × time, per home, cross-checked with the smart meter’s 15-min data. The smart meter is a measurement cross-check, not the control path. Battery wear break-even ≈ ₹{WEAR_FLOOR}/verified kWh <Tag t="ESTIMATE" />.</p>
             </Detail>
             <Detail t="Assumptions & limits">
-              <p>Hypothetical feeder; 500 battery homes; 103 controllable is a <b>scenario assumption</b> (no public data on the real share). Simulation uses a perfect forecast and one clear day; winter evenings have less stress. Value exists at genuinely stressed DTs, not feeder-wide.</p>
+              <p>Synthetic feeder and DTs (no {PILOT.utility.short} data); 500 homes; 103 controllable is a <b>scenario assumption</b> (no public data on the real share). The event is planned from a forecast with a seeded ±5 % error; DT loading assumes power factor 0.9. News examples from Wakad–Tathawade are large housing societies, not independent houses; the real mix is unknown. Monsoon and winter evenings have less stress. Value exists at genuinely stressed DTs, not feeder-wide.</p>
             </Detail>
             <div className="lg:col-span-2">
               <div className="mb-2 text-sm font-bold text-fg">Glossary</div>
@@ -168,7 +172,7 @@ function Architecture() {
       <text x="370" y="246" fontSize="10.5" fill="#8a5d0f">(not control)</text>
       <rect x="20" y="332" width="404" height="56" rx="6" fill="#f7f9f6" stroke="#dde6dd" />
       <text x="34" y="352" fontSize="11" fontWeight="700" fill="#163a28">Power path</text>
-      <text x="34" y="370" fontSize="11" fill="#2f4a3b">Home → LT network → DT → 11 kV feeder → substation</text>
+      <text x="34" y="370" fontSize="11" fill="#2f4a3b">Home → LT network → DT → {PILOT.kv} feeder → substation</text>
       <text x="34" y="382" fontSize="10" fill="#6b7a70">dashed arrows = data / control signals · the VPP never carries power</text>
     </svg>
   )
@@ -179,7 +183,7 @@ function WhyNow() {
     <section className="rounded-lg border border-line bg-white p-4 shadow-card">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h2 className="text-lg font-extrabold">Why now — and what is still missing</h2>
-        <span className="text-xs text-dim">sourced; national figures are India-wide unless marked Gujarat</span>
+        <span className="text-xs text-dim">sourced; Maharashtra figures unless marked global — none is specific to {PILOT.short}</span>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {WHY_NOW.cards.map(c => (

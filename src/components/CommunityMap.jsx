@@ -1,11 +1,13 @@
 import { memo, useMemo } from 'react'
-import { DT_RATING, DT_HOMES, SPECIAL, solarShape, homePv } from '../sim/engine.js'
+import { DT_HOMES, SPECIAL, solarShape, homePv, dtLoadPct } from '../sim/engine.js'
+import { PILOT } from '../config/pilot.js'
 import { statusOf, STATUS_META, homeEnergy } from '../sim/model.js'
 
 /**
- * Living community map — a stylised, fictional neighbourhood on a HYPOTHETICAL Gujarat 11 kV feeder.
+ * Living community map — a stylised, fictional neighbourhood on a SYNTHETIC feeder. The pilot area
+ * (Wakad–Tathawade, Pune) is named only as an illustrative location: no real coordinates, streets or assets.
  * 34 of the 500 simulated homes are drawn; every home exists in the simulation.
- * Power path drawn: home → LT (low-voltage) street network → DT → 11 kV feeder → substation.
+ * Power path drawn: home → LT (low-voltage) street network → DT → 22 kV feeder → substation.
  * The VPP only sends data (dashed lines); it never carries power.
  */
 export const W = 1400, H = 730
@@ -39,13 +41,6 @@ function mulberry32(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
-
-// Gujarat outline for the locator inset (stylised)
-const GUJ = [
-  'M90,232 C118,170 262,150 382,164 C474,176 522,202 516,232 C508,264 432,270 362,264 C282,259 182,276 122,264 C104,258 92,246 90,232 Z',
-  'M150,430 C158,346 252,302 364,300 C474,298 566,330 596,384 C620,444 586,524 512,574 C452,614 360,632 288,606 C208,580 150,512 150,430 Z',
-  'M556,190 C650,164 802,158 924,174 C1044,190 1112,242 1116,322 C1120,424 1070,524 1000,602 C950,656 878,692 818,690 C768,688 752,650 734,602 C694,512 636,444 598,384 C566,324 538,242 556,190 Z',
-]
 
 const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16))
 const mix = (a, b, f) => {
@@ -160,7 +155,7 @@ function CommunityMap({ sim, hour, stepIdx, trunkTone, requestedIds, showVpp, vp
         ...c.top.map(([x, v]) => ({ h: take(v), x, y: c.street + TOP_DY, below: false })),
         ...c.bot.map(([x, v]) => ({ h: take(v), x, y: c.street + BOT_DY, below: true })),
       ].filter(s => s.h)
-      // power path from each street end to the DT, then up/down the spur to the 11 kV trunk and on to the substation
+      // power path from each street end to the DT, then up/down the spur to the feeder trunk and on to the substation
       const toSub = `L${c.spur},${c.street} L${c.spur},${TRUNK_Y} L${SUB.x},${TRUNK_Y} L${SUB.x},${SUB.y - 30}`
       const ends = [c.x0, c.x1].filter(x => Math.abs(x - c.dtx) > 30)
       const paths = ends.map(x => `M${x},${c.street} L${c.dtx},${c.street} ${toSub}`)
@@ -194,7 +189,7 @@ function CommunityMap({ sim, hour, stepIdx, trunkTone, requestedIds, showVpp, vp
 
   return (
     <svg viewBox={`0 ${VB_Y} ${W} ${VB_H}`} className="block h-auto w-full select-none" role="img"
-      aria-label="Stylised neighbourhood map of a hypothetical Gujarat 11 kV feeder" onClick={() => onPick(null)}>
+      aria-label={`Stylised, fictional neighbourhood on a synthetic ${PILOT.kv} feeder — illustrative only, not a map of ${PILOT.short}`} onClick={() => onPick(null)}>
       <defs>
         <linearGradient id="skyg" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0" stopColor={mix(sky, '#000000', dark * 0.25)} />
@@ -271,7 +266,7 @@ function CommunityMap({ sim, hour, stepIdx, trunkTone, requestedIds, showVpp, vp
         )
       }))}
 
-      {/* 11 kV feeder: trunk + spurs with poles */}
+      {/* feeder: trunk + spurs with poles */}
       {(() => {
         const segs = [
           `M${SUB.x},${SUB.y - 30} L${SUB.x},${TRUNK_Y} L1300,${TRUNK_Y}`,
@@ -286,7 +281,7 @@ function CommunityMap({ sim, hour, stepIdx, trunkTone, requestedIds, showVpp, vp
               <g key={k}><line x1={x - 6} y1={y - 5} x2={x + 6} y2={y - 5} stroke="#51695c" strokeWidth="1.6" /><circle cx={x} cy={y} r={2.6} fill="#51695c" /></g>
             ))}
             <rect x="1150" y={TRUNK_Y - 24} width="120" height="18" rx="9" fill="#ffffff" stroke={TRUNK} />
-            <text x="1210" y={TRUNK_Y - 11} textAnchor="middle" fontSize="11" fontWeight="700" fill={TRUNK}>11 kV feeder</text>
+            <text x="1210" y={TRUNK_Y - 11} textAnchor="middle" fontSize="11" fontWeight="700" fill={TRUNK}>{PILOT.kv} feeder</text>
           </g>
         )
       })()}
@@ -321,7 +316,7 @@ function CommunityMap({ sim, hour, stepIdx, trunkTone, requestedIds, showVpp, vp
       {/* distribution transformers (pole-mounted) */}
       {layout.map(c => {
         const d = dtDisplay?.[c.dt] || (() => {
-          const pct = 100 * step.dtNet[c.dt] / DT_RATING[c.dt]
+          const pct = dtLoadPct(step.dtNet[c.dt], c.dt)
           return { pct, tone: pct > 100 ? 'red' : pct > 90.5 || pct < -40 ? 'amber' : 'green' }
         })()
         const T = DT_TONE[d.tone]
@@ -366,7 +361,7 @@ function CommunityMap({ sim, hour, stepIdx, trunkTone, requestedIds, showVpp, vp
             <circle cx="12" cy="15" r="6" fill="none" stroke="#51695c" /><circle cx="24" cy="15" r="6" fill="none" stroke="#51695c" />
           </g>
         ))}
-        <text x={SUB.x} y={SUB.y + 34} textAnchor="middle" fontSize="12" fontWeight="700" fill="#163a28">Substation 66/11 kV</text>
+        <text x={SUB.x} y={SUB.y + 34} textAnchor="middle" fontSize="12" fontWeight="700" fill="#163a28">Substation {PILOT.substation}</text>
         <rect x={SUB.x - 70} y={SUB.y + 54} width={140} height={22} rx={11}
           fill={feederNet < -5 ? '#fbf1dc' : '#e6f2ea'} stroke={feederNet < -5 ? '#c98a1b' : '#1f6b45'} />
         <text x={SUB.x} y={SUB.y + 69} textAnchor="middle" fontSize="12" fontWeight="700" fontFamily="IBM Plex Mono, monospace"
@@ -432,10 +427,13 @@ function CommunityMap({ sim, hour, stepIdx, trunkTone, requestedIds, showVpp, vp
       {/* locator inset */}
       <g transform="translate(1212,600)">
         <rect width="178" height="112" rx="8" fill="#ffffff" stroke="#d2ddcf" />
-        <g transform="translate(10,8) scale(0.14)">{GUJ.map((d, k) => <path key={k} d={d} fill="#e3eee0" stroke="#9fb7a2" strokeWidth="8" />)}</g>
-        <circle cx={10 + 700 * 0.14} cy={8 + 430 * 0.14} r="5" fill="#c0452f" stroke="#fff" strokeWidth="1.5" />
-        <text x="10" y="94" fontSize="10.5" fontWeight="700" fill="#2f4a3b">Gujarat — illustrative location</text>
-        <text x="10" y="106" fontSize="9.5" fill="#6b7a70">Hypothetical feeder · not to scale</text>
+        <g transform="translate(89,40)">
+          <path d="M0,-22 C-12,-22 -18,-13 -18,-5 C-18,8 0,24 0,24 C0,24 18,8 18,-5 C18,-13 12,-22 0,-22 Z" fill="#c0452f" opacity="0.9" />
+          <circle cx="0" cy="-6" r="6" fill="#fff" />
+        </g>
+        <text x="10" y="82" fontSize="10.5" fontWeight="700" fill="#2f4a3b">{PILOT.area}</text>
+        <text x="10" y="94" fontSize="9.5" fill="#2f4a3b">{PILOT.city}</text>
+        <text x="10" y="106" fontSize="9" fill="#6b7a70">Illustrative · synthetic feeder · not a map</text>
       </g>
     </svg>
   )

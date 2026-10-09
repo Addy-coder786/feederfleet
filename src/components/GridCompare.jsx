@@ -2,15 +2,16 @@
 // Moving dots = electric power. Top: one direction only. Bottom: the local network carries power both ways.
 import { useRef, useState } from 'react'
 import { HERO_DT } from '../sim/engine.js'
+import { PILOT } from '../config/pilot.js'
 import { SimBadge } from './ui.jsx'
 
 const TIPS = {
   plant: ['Generation · power plant', 'Large thermal / central plants make electricity far from the homes that use it.'],
   stepup: ['Step-up transformer', 'Raises the voltage (e.g. to 220–400 kV) so power can travel long distances with low losses.'],
   tower: ['Transmission tower', 'High-voltage lines carry bulk power from the plant to grid substations.'],
-  dt: ['Substation + distribution transformer (DT)', 'The substation steps down to 11 kV (the feeder). The street DT then steps down to 415 V for homes. Each DT has a rating (e.g. 100 kVA).'],
+  dt: ['Substation + distribution transformer (DT)', `The substation steps down to ${PILOT.kv} (the feeder; ${PILOT.substation} in Wakad–Tathawade).`+' The street DT then steps down to 415 V for homes. Each DT has a rating (e.g. 100 kVA).'],
   dtStress: ['DT overload — “load occurs” here', 'In the evening, AC load from all homes on one DT adds up. Above 100 % of rating the DT overheats and ages faster; the usual fix is a costly upgrade.'],
-  dtVpp: ['DT kept below its limit', 'FeederFleet asks only the batteries under this DT to discharge at the peak, so the DT stays near its 90 % target instead of overloading.'],
+  dtVpp: ['DT kept below its limit', 'FeederFleet asks only the batteries under this DT to discharge at the peak, to cut the DT peak towards its 90 % target. If too few batteries are enrolled, the shortfall is shown, not hidden.'],
   pole: ['LT pole & service line', 'Low-tension (415 / 230 V) street network. Each home connects through its own service line — no house-to-house cables.'],
   home: ['Consumer home', 'Only takes power from the grid. Its load adds to the DT’s evening peak.'],
   prosumer: ['Prosumer home', 'Rooftop solar + home battery + hybrid inverter. It can make, store and (when the DT needs it) send power to the local network.'],
@@ -23,7 +24,7 @@ const TIPS = {
 export default function GridCompare({ sim }) {
   const box = useRef(null)
   const [tip, setTip] = useState(null)
-  const rating = sim.dtRating[HERO_DT]
+  const rating = sim.dtKwLimit[HERO_DT] // kW at 100 % of the kVA rating (assumed pf)
   const pkWithout = Math.round(100 * sim.hero.peakWithoutKw / rating)
   const pkWith = Math.round(100 * sim.hero.peakWithKw / rating)
   const show = k => e => {
@@ -55,7 +56,7 @@ export default function GridCompare({ sim }) {
         </div>
         <Panel kind="vpp" hp={hp} pk={pkWith} />
       </div>
-      <p className="mt-2 text-[11px] text-dim">Illustration — not to scale. DT-10 peak figures are from the simulated hypothetical feeder ({pkWithout} % → {pkWith} % of its 100 kVA rating).</p>
+      <p className="mt-2 text-[11px] text-dim">Illustration — not to scale. DT-10 peak figures are from the simulated synthetic feeder ({pkWithout} % → {pkWith} % of its {sim.dtRating[HERO_DT]} kVA rating, assumed pf {sim.pf}).</p>
 
       {tip && (
         <div className="pointer-events-none absolute z-20 w-64 rounded-md border border-line bg-white p-2.5 text-xs shadow-lg"
@@ -153,7 +154,7 @@ function Panel({ kind, hp, pk }) {
         {/* distribution transformer (DT) */}
         <g {...hp(vpp ? 'dtVpp' : 'dt')}>
           <Xfmr x={418} y={128} hot={!vpp} ok={vpp} />
-          <text x="432" y="218" textAnchor="end" fontSize="11" fill="#5a6470">DT · 11 kV → 415 V</text>
+          <text x="432" y="218" textAnchor="end" fontSize="11" fill="#5a6470">DT · {PILOT.kv} → 415 V</text>
         </g>
 
         {/* DT status chip */}

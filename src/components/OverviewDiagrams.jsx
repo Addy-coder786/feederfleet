@@ -1,8 +1,9 @@
 // Two live diagrams for the Overview tab: the system work diagram and the "how to reduce the load curve" loop.
-// Every number shown is read from the simulation (seed 20260927) — nothing is hard-coded.
+// Every number shown is read from the simulation — nothing is hard-coded.
 import { useEffect, useMemo, useState } from 'react'
 import { ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ReferenceArea } from 'recharts'
-import { HERO_DT, MATCH_HR } from '../sim/engine.js'
+import { HERO_DT, MATCH_HR, EVENT_TARGET } from '../sim/engine.js'
+import { PILOT } from '../config/pilot.js'
 import { homeEnergy, stepOf, fmtHr, statusOf, STATUS_META } from '../sim/model.js'
 import { SimBadge } from './ui.jsx'
 
@@ -23,10 +24,10 @@ export function WorkDiagram({ sim }) {
   const T = TIMES.find(t => t.k === tk)
   const st = stepOf(T.hr)
   const s = sim.withVpp.steps[st], s0 = sim.without.steps[st]
-  const rating = sim.dtRating[HERO_DT]
+  const rating = sim.dtKwLimit[HERO_DT] // kW that loads the DT to 100 % of its kVA rating (assumed pf)
   const dtKw = s.dtNet[HERO_DT], dtKw0 = s0.dtNet[HERO_DT]
   const reverse = dtKw < 0
-  const ampsLt = Math.abs(dtKw) * 1000 / (Math.sqrt(3) * 415) // LT side, pf ≈ 1 assumed
+  const ampsLt = Math.abs(dtKw) * 1000 / (Math.sqrt(3) * 415 * sim.pf) // LT side: I = P / (√3 · V · pf)
   const feederKw = s.feederNet, feederKw0 = s0.feederNet
   const evening = tk === 'event'
 
@@ -55,7 +56,7 @@ export function WorkDiagram({ sim }) {
           ))}
         </div>
       </div>
-      <p className="mb-2 text-xs text-dim">Live readings from the simulated DT-10 (100 kVA) and three of its homes. Dashed green = data over 4G. Solid = electric power (it never flows through the VPP cloud).</p>
+      <p className="mb-2 text-xs text-dim">Live readings from the simulated DT-10 ({sim.dtRating[HERO_DT]} kVA) and three of its homes. Dashed green = data over 4G. Solid = electric power (it never flows through the VPP cloud).</p>
       <div className="overflow-x-auto">
         <svg viewBox="0 0 1220 500" className="min-w-[900px] w-full" role="img" aria-label="FeederFleet work diagram">
           <defs>
@@ -118,7 +119,7 @@ export function WorkDiagram({ sim }) {
           <text x="404" y="392" fontSize="11" fontWeight="700" fill="#1f6b45">DECISION AT {fmtHr(T.hr)}</text>
           {evening ? (
             <>
-              <text x="404" y="411" fontSize="12" fill="#2f4a3b">DT-10 forecast {Math.round(100 * ev.forecastPeakKw / rating)}% → target 90%</text>
+              <text x="404" y="411" fontSize="12" fill="#2f4a3b">DT-10 forecast {Math.round(100 * ev.forecastPeakKw / rating)}% → target {Math.round(EVENT_TARGET * 100)}%</text>
               <text x="404" y="429" fontSize="12" fill="#2f4a3b">Request {ev.requiredKw.toFixed(0)} kW · matched {ev.match.matchedKw.toFixed(1)} kW</text>
               <text x="404" y="447" fontSize="12" fill="#2f4a3b">{ev.perHome.length} homes dispatched (merit order)</text>
             </>
@@ -147,7 +148,7 @@ export function WorkDiagram({ sim }) {
           <text x="756" y="139" fontSize="12" fontWeight="700" fill="#163a28">DT smart sensor &amp; CT sensor</text>
           <text x="756" y="158" fontSize="11" fill="#6b7a70">sends readings over 4G every 15 min</text>
           {[
-            ['Loading', `${kw(dtKw)} · ${Math.round(100 * dtKw / rating)}%`, Math.abs(dtKw) > 0.9 * rating ? '#b03a26' : '#163a28'],
+            ['Loading', `${kw(dtKw)} · ${Math.round(100 * dtKw / rating)}%`, Math.abs(dtKw) > EVENT_TARGET * rating ? '#b03a26' : '#163a28'],
             ['Without VPP', `${kw(dtKw0)} · ${Math.round(100 * dtKw0 / rating)}%`, '#6b7a70'],
             ['Current (LT)', `≈ ${Math.round(ampsLt)} A`, '#163a28'],
             ['Power flow', reverse ? 'REVERSE (to feeder)' : 'Forward (to homes)', reverse ? '#9a5f0a' : '#163a28'],
@@ -160,13 +161,13 @@ export function WorkDiagram({ sim }) {
             </g>
           ))}
           {/* DT loading gauge */}
-          <text x="742" y="362" fontSize="11" fill="#6b7a70">DT-10 loading vs rating (100 kVA)</text>
+          <text x="742" y="362" fontSize="11" fill="#6b7a70">DT-10 loading vs rating ({sim.dtRating[HERO_DT]} kVA, pf {sim.pf})</text>
           <rect x="742" y="376" width="210" height="16" rx="4" fill="#ffffff" stroke="#c3cec6" />
           <rect x="742" y="376" width={Math.min(210, 210 * Math.abs(dtKw0) / rating / 1.1)} height="16" rx="4" fill={C_WITHOUT} opacity="0.25" />
           <rect x="742" y="376" width={Math.min(210, 210 * Math.abs(dtKw) / rating / 1.1)} height="16" rx="4" fill={reverse ? '#c98a1b' : C_WITH} />
-          <line x1={742 + 210 * 0.9 / 1.1} x2={742 + 210 * 0.9 / 1.1} y1="372" y2="396" stroke="#163a28" strokeDasharray="2 2" />
+          <line x1={742 + 210 * EVENT_TARGET / 1.1} x2={742 + 210 * EVENT_TARGET / 1.1} y1="372" y2="396" stroke="#163a28" strokeDasharray="2 2" />
           <line x1={742 + 210 / 1.1} x2={742 + 210 / 1.1} y1="372" y2="396" stroke="#b03a26" />
-          <text x={742 + 210 * 0.9 / 1.1} y="408" textAnchor="middle" fontSize="9" fill="#163a28">90%</text>
+          <text x={742 + 210 * EVENT_TARGET / 1.1} y="408" textAnchor="middle" fontSize="9" fill="#163a28">{Math.round(EVENT_TARGET * 100)}%</text>
           <text x={742 + 210 / 1.1 + 2} y="369" textAnchor="start" fontSize="9" fill="#b03a26">100%</text>
           <text x="742" y="436" fontSize="11" fill="#6b7a70">faded bar = without VPP</text>
           <text x="742" y="456" fontSize="11" fill="#6b7a70">voltage is not modelled in this demo</text>
@@ -180,7 +181,7 @@ export function WorkDiagram({ sim }) {
           <rect x="1036" y="50" width="176" height="210" rx="10" fill="#fbeef0" stroke="#e3b3bb" strokeWidth="1.4" />
           <text x="1124" y="80" textAnchor="middle" fontSize="15" fontWeight="800" fill="#163a28">Transmission grid</text>
           <text x="1124" y="100" textAnchor="middle" fontSize="13" fontWeight="700" fill="#163a28">DISCOM substation</text>
-          <text x="1124" y="130" textAnchor="middle" fontSize="11" fill="#6b7a70">11 kV feeder head</text>
+          <text x="1124" y="130" textAnchor="middle" fontSize="11" fill="#6b7a70">{PILOT.kv} feeder head</text>
           <text x="1124" y="156" textAnchor="middle" fontSize="16" fontWeight="800" fill={feederKw < 0 ? '#9a5f0a' : '#163a28'}>{kw(feederKw)}</text>
           <text x="1124" y="176" textAnchor="middle" fontSize="11" fill="#6b7a70">without VPP {kw(feederKw0)}</text>
           <text x="1124" y="206" textAnchor="middle" fontSize="11" fontWeight="700" fill={C_WITH}>{evening ? `${Math.round(feederKw0 - feederKw)} kW less drawn` : `${Math.round(feederKw - feederKw0)} kW less pushed back`}</text>
@@ -208,7 +209,7 @@ export function WorkDiagram({ sim }) {
 
 export function LoadCurveLoop({ sim }) {
   const ev = sim.hero
-  const rating = sim.dtRating[HERO_DT]
+  const rating = sim.dtKwLimit[HERO_DT] // kW at 100 % of the kVA rating
   const enrolled = sim.homes.filter(h => h.dt === HERO_DT && h.battery.controllable)
   const peakHr = ev.forecastPeakStep / 4
   const NODES = [
@@ -260,7 +261,7 @@ export function LoadCurveLoop({ sim }) {
           <button onClick={() => { if (ni >= NODES.length - 1) setNi(0); setPlay(p => !p) }} className="rounded-md bg-grid px-3 py-1 text-xs font-bold text-white hover:brightness-110">{play ? '❚❚ Pause' : '▶ Play the day'}</button>
         </div>
       </div>
-      <p className="mb-3 text-xs text-dim">Click any step. The chart and numbers update for that time on DT-10 (100 kVA, {enrolled.length} enrolled batteries).</p>
+      <p className="mb-3 text-xs text-dim">Click any step. The chart and numbers update for that time on DT-10 ({sim.dtRating[HERO_DT]} kVA, {enrolled.length} enrolled batteries).</p>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
         {/* the loop */}
@@ -305,7 +306,7 @@ export function LoadCurveLoop({ sim }) {
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-dim">
             <span><span className="mr-1 inline-block h-2 w-3 rounded-sm align-middle" style={{ background: C_WITHOUT }} />Before: DT-10 loading, batteries self-use only</span>
             <span><span className="mr-1 inline-block h-2 w-3 rounded-sm align-middle" style={{ background: C_WITH }} />After: with FeederFleet</span>
-            <span>% of 100 kVA rating · negative = reverse flow</span>
+            <span>% of {sim.dtRating[HERO_DT]} kVA rating (pf {sim.pf}) · negative = reverse flow</span>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Read k={`DT-10 at ${fmtHr(node.hr)}`} v={`${d.without}% → ${d.withVpp}%`} />

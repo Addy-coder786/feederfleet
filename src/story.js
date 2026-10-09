@@ -1,5 +1,7 @@
 // The 60-second demo script. Demo seconds -> simulated hour of day, captions, colour state, flowchart step.
 import { useEffect, useRef, useState } from 'react'
+import { SPECIAL } from './config/scenario.js'
+import { PILOT } from './config/pilot.js'
 
 export const DEMO_LEN = 60
 export const REST_SEC = 10.5 // still frame before Start: midday, surplus flowing back
@@ -25,14 +27,15 @@ export function secAt(hour) {
 export const PHASES = [
   { from: 0, tone: 'green', kicker: 'Morning', title: 'Solar generation rising', sub: 'Homes use their own solar first.' },
   { from: 5, tone: 'sun', kicker: 'Midday', title: 'Solar surplus', sub: 'Batteries charge. Some are already full.' },
-  { from: 8.5, tone: 'amber', kicker: 'Midday', title: 'Reverse power flow', sub: 'Surplus flows back: homes → DT → 11 kV feeder → substation.' },
-  { from: 12, tone: 'orange', kicker: 'Afternoon', title: 'Reverse flow pressure', sub: 'DT-10 is pushing about half its rating backwards.' },
+  { from: 8.5, tone: 'amber', kicker: 'Midday', title: 'Reverse power flow', sub: `Surplus flows back: homes → DT → ${PILOT.kv} feeder → substation.` },
+  { from: 12, tone: 'orange', kicker: 'Afternoon', title: 'Reverse flow pressure', sub: 'DT-10 is pushing power backwards towards the substation.' },
   { from: 15.5, tone: 'red', kicker: 'Evening peak approaching', title: 'DT-10 forecast: overload tonight', sub: 'Sun sets, ACs switch on, demand climbs.' },
   { from: 20, tone: 'vpp', kicker: 'FeederFleet VPP', title: 'Finding available flexibility…', sub: 'Only homes under DT-10 can relieve DT-10.' },
   { from: 24, tone: 'vpp', kicker: 'FeederFleet VPP', title: 'Matching homes under DT-10', sub: 'Who is online, above reserve, and has energy?' },
   { from: 32, tone: 'red', kicker: 'Evening peak', title: 'Demand rising on DT-10', sub: 'Matched batteries hold their charge for the peak.' },
   { from: 35, tone: 'vpp', kicker: 'Dispatch', title: 'Local battery support active', sub: 'Selected batteries discharge into the local network.' },
-  { from: 41, tone: 'vpp', kicker: 'Dispatch', title: 'DT-10 peak reduced', sub: 'DT-10 held at its 90 % target; the feeder peak falls too.' },
+  { from: 37.8, tone: 'amber', kicker: 'Replan', title: `Home #${SPECIAL.DROPOUT} stops responding`, sub: 'Matching re-runs on live battery state; anyone still eligible is called.' },
+  { from: 41, tone: 'vpp', kicker: 'Dispatch', title: 'DT-10 peak reduced', sub: 'Selected batteries cut the DT-10 peak; the feeder peak falls too. Any shortfall is reported, never hidden.' },
   { from: 45, tone: 'vpp', kicker: 'Result', title: 'Result', sub: '' },
   { from: 52, tone: 'vpp', kicker: 'Verify & settle', title: 'Delivery verified · homeowners paid', sub: 'Paid only for verified kWh. Solar export credit stays separate.' },
 ]
@@ -54,9 +57,9 @@ export const FLOW = [
   { k: 'CHECK RESERVE', d: 'Owner reserve is a hard floor', from: 20 },
   { k: 'MATCH HOMES', d: 'Same DT · online · enough energy', from: 24 },
   { k: 'DISPATCH', d: 'Setpoints to the home gateways', from: 32 },
-  { k: 'VERIFY', d: 'Actual − baseline, meter cross-check', from: 45 },
+  { k: 'REPLAN', d: 'Dropout? Re-match on live state', from: 37.8 },
+  { k: 'VERIFY', d: 'Actual − baseline; gaps count as zero', from: 45 },
   { k: 'SETTLE', d: 'Pay per verified kWh', from: 52 },
-  { k: 'REPLAN', d: 'Recharge from tomorrow’s solar', from: 57 },
 ]
 export const flowIdx = sec => FLOW.reduce((a, f, i) => (sec >= f.from ? i : a), 0)
 

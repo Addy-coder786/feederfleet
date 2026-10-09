@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine, ReferenceArea } from 'recharts'
-import { SPECIAL } from '../sim/engine.js'
-import { stepOf, fmtHr, homeEnergy, homeSeries, ENERGY_STATE, availOf } from '../sim/model.js'
+import { offlineSince } from '../sim/engine.js'
+import { stepOf, fmtHr, homeEnergy, homeSeries, ENERGY_STATE, availOf, VERDICT_NOTE, perHomeNote } from '../sim/model.js'
+import { PILOT } from '../config/pilot.js'
 import { payFor, RATE_PER_KWH, RETAINER_YR } from '../data/econ.js'
 import Ledger from '../components/Ledger.jsx'
 import Term from '../components/Term.jsx'
@@ -10,12 +11,13 @@ import { SimBadge, PanelTitle, Kpi } from '../components/ui.jsx'
 // validated three-series palette on white: solar / consumption / battery
 const C_SOLAR = '#d09a2a', C_LOAD = '#b3541e', C_BATT = '#2f8f6b'
 const TIMES = [['Midday', 52], ['Event', 87], ['End of day', 95], ['Live demo', null]]
-// illustrative earlier events (🖥 simulated): same DT-10 event on other evenings, one with a data gap
+// SYNTHETIC EXAMPLES of earlier evenings (not simulated days, not payments): today's verified kWh × a
+// factor, to show what a statement could look like. Marked EXAMPLE in the ledger and excluded from totals.
 const HISTORY = [
-  { date: '24 Sep', f: 1.06 },
-  { date: '21 Sep', f: 0.58, note: 'partial — 35 min telemetry gap counted as zero' },
-  { date: '18 Sep', f: 0.93 },
-  { date: '14 Sep', f: 1.11 },
+  { ago: 3, f: 1.06 },
+  { ago: 6, f: 0.58, note: 'example of a partial event — 35 min telemetry gap counted as zero' },
+  { ago: 9, f: 0.93 },
+  { ago: 13, f: 1.11 },
 ]
 const STORY_HOMES = [137, 58, 17, 41, 229, 312, 141, 204]
 
@@ -40,10 +42,10 @@ export default function HomePage({ sim, homeId, setHomeId, demo, setReserve }) {
   const minSoc = mine ? Math.min(...sim.withVpp.steps.slice(ev.activeStart, ev.activeEnd).map(s => s.soc[h.id - 1])) : null
 
   const ledgerRows = !b.controllable ? [] : [
-    mine ? { date: '27 Sep', event: `DT-${h.dt + 1} evening support`, kwh: mine.deliveredKwh, status: doneEvent ? 'verified' : 'pending', note: doneEvent ? '' : 'event tonight — verified after it ends' }
-      : row ? { date: '27 Sep', event: `DT-${h.dt + 1} evening support`, kwh: 0, status: row.verdict === 'offline' ? 'offline' : 'zero', note: row.verdict === 'offline' ? 'gateway offline — safe local mode, counted as zero' : row.verdict === 'standby' ? 'standby — not needed tonight' : 'reserve protected — not asked to discharge' }
+    mine ? { date: sim.scenario.dateLabel, event: `DT-${h.dt + 1} evening support`, kwh: mine.deliveredKwh, status: doneEvent ? 'verified' : 'pending', note: doneEvent ? perHomeNote(mine, fmtHr) : 'event tonight — verified after it ends' }
+      : row ? { date: sim.scenario.dateLabel, event: `DT-${h.dt + 1} evening support`, kwh: 0, status: row.verdict === 'offline' ? 'offline' : 'zero', note: VERDICT_NOTE[row.verdict] || '' }
       : null,
-    ...(mine || row?.verdict === 'reserve' ? HISTORY.map(r => ({ date: r.date, event: `DT-${h.dt + 1} evening support`, kwh: (mine?.deliveredKwh ?? 1.6) * r.f, status: 'verified', note: r.note })) : []),
+    ...(mine ? HISTORY.map(r => ({ date: `day −${r.ago}`, event: `DT-${h.dt + 1} evening support`, kwh: mine.deliveredKwh * r.f, status: 'example', note: r.note || 'synthetic example row' })) : []),
   ].filter(Boolean)
 
   return (
@@ -132,13 +134,15 @@ export default function HomePage({ sim, homeId, setHomeId, demo, setReserve }) {
                   <span className={`text-sm font-bold ${doneEvent ? 'text-grid' : 'text-[#7a520c]'}`}>{doneEvent ? 'Verified ✅ (meter cross-check)' : 'Pending — verified after the event'}</span>
                   <span className="font-mono text-xl font-bold text-fg">₹{payFor(mine.deliveredKwh).toFixed(2)}</span>
                 </div>
+                {perHomeNote(mine, fmtHr) && <p className="mt-2 rounded-md bg-[#fdf6e6] p-2 text-xs text-[#7a520c]">{perHomeNote(mine, fmtHr)}</p>}
                 <p className="mt-2 text-xs text-grid">🛡 Backup reserve protected — lowest charge during the event: {Math.round(minSoc * 100)}% (reserve {Math.round(b.reserve * 100)}%).</p>
               </>
             ) : (
               <p className="text-sm text-fgb">
                 {row?.verdict === 'reserve' && <>Not dispatched: you keep {Math.round(b.reserve * 100)}% for backup, so the VPP did not ask this battery to help. ₹0 for tonight; the availability retainer still applies.</>}
                 {row?.verdict === 'standby' && <>Eligible but on standby tonight — the request was covered by other homes. You are called automatically if a selected home drops out. The availability retainer still applies.</>}
-                {row?.verdict === 'offline' && <>Gateway offline since {fmtHr(19)}. The inverter fell back to normal self-use; delivery is counted as zero. No penalty.</>}
+                {row?.verdict === 'low' && <>Not dispatched: too little energy above your reserve for the whole event. ₹0 for tonight; the availability retainer still applies.</>}
+                {row?.verdict === 'offline' && <>Gateway offline since {fmtHr(offlineSince(h.id) ?? 19)}. The inverter fell back to normal self-use; delivery is counted as zero. No penalty.</>}
                 {!b.controllable && <>This battery is monitor-only (inverter UPS). The VPP can see it but cannot control it, so it never receives requests.</>}
                 {b.controllable && !row && <>No VPP event on this transformer today.</>}
               </p>
@@ -151,7 +155,7 @@ export default function HomePage({ sim, homeId, setHomeId, demo, setReserve }) {
         <div className="rounded-lg border border-line bg-white p-4 shadow-card">
           <PanelTitle kicker="Transaction history" title="VPP flexibility payments" right={<SimBadge />} />
           <Ledger rows={ledgerRows} showHome={false}
-            footer={<>Paid only for <b>verified battery flexibility</b> (actual − baseline, cross-checked with the smart meter) at ₹{RATE_PER_KWH}/kWh, an illustrative pilot rate, plus a ₹{RETAINER_YR}/yr availability retainer. Your <Term k="NETMETER">solar export credit</Term> is unchanged and settled separately on your DISCOM bill. Rows before 27 Sep are illustrative simulated history.</>} />
+            footer={<>Paid only for <b>verified battery flexibility</b> (actual − baseline, cross-checked with the smart meter) at ₹{RATE_PER_KWH}/kWh, an illustrative pilot rate, plus a ₹{RETAINER_YR}/yr availability retainer. Your <Term k="NETMETER">solar export credit</Term> is unchanged and settled separately on your {PILOT.utility.short} bill. Rows marked EXAMPLE are synthetic illustrations, not payments, and are not in the total.</>} />
         </div>
       )}
     </div>

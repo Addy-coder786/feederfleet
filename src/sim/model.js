@@ -1,10 +1,11 @@
 // Read-side helpers over the simulation (WITH-VPP scenario unless noted).
-import { SPECIAL, MATCH_HR, homePv, homeLoad, evaluateCandidates, DT_RATING } from './engine.js'
+import { SPECIAL, homePv, homeLoad, evaluateCandidates, dtLoadPct, isOfflineAt, DT_H } from './engine.js'
+import { FAILURES } from '../config/scenario.js'
 
 export const stepOf = hr => Math.min(95, Math.max(0, Math.floor(hr * 4 + 1e-6)))
 export const fmtHr = hr => `${String(Math.floor(hr) % 24).padStart(2, '0')}:${String(Math.round((hr % 1) * 60) % 60).padStart(2, '0')}`
 
-/** Per-home energy balance at one step. net > 0 = exporting to the local network. */
+/** Per-home energy balance at one step. NOTE: here net > 0 = EXPORTING (opposite of the engine's dtNet/feederNet sign). */
 export function homeEnergy(sim, h, stepIdx, scen = 'withVpp') {
   const s = sim[scen].steps[stepIdx]
   const i = h.id - 1
@@ -29,7 +30,7 @@ export function homeSeries(sim, h) {
   })
 }
 
-export const isOffline = (h, hr) => h.id === SPECIAL.COMMS && hr >= MATCH_HR
+export const isOffline = (h, hr) => isOfflineAt(h.id, hr)
 
 /** Device status at one step (drives the battery colour on the map). */
 export function statusOf(h, step, hr) {
@@ -39,7 +40,7 @@ export function statusOf(h, step, hr) {
   if (step.curtail[i] > 0.02) return 'curtailed'
   if (step.dis[i] > 0.05) return step.vpp?.[i] ? 'discharging' : 'selfuse'
   if (step.chg[i] > 0.05) return 'charging'
-  if (h.id === SPECIAL.RESERVE && hr >= MATCH_HR) return 'reserve'
+  if (h.id === SPECIAL.RESERVE && hr >= FAILURES.offline[0].fromHr) return 'reserve'
   if (step.soc[i] >= 0.965) return 'full'
   return 'available'
 }
@@ -66,7 +67,7 @@ export function availOf(h, step) {
 /** Candidates for the matching rules on one DT, using battery state at the START of a step. */
 export function candidatesAt(sim, dt, stepIdx) {
   const prev = sim.withVpp.steps[Math.max(0, stepIdx - 1)]
-  const hr = stepIdx * 0.25
+  const hr = stepIdx * DT_H
   return sim.homes.filter(h => h.dt === dt).map(h => ({
     id: h.id, dt, controllable: h.battery.controllable, online: !isOffline(h, hr),
     soc: stepIdx === 0 ? h.battery.soc0 : prev.soc[h.id - 1], reserve: h.battery.reserve, floor: h.battery.floor,
@@ -81,7 +82,7 @@ export function runMatch(sim, { dt, kind, requiredKw, hours, stepIdx }) {
   return res
 }
 
-/** DT colour state. Loading above 100 % = red, above 90 % or exporting > 40 % of rating = amber. */
+/** DT colour state from loading % of the kVA rating. Above 100 % = red, above 90 % or exporting > 40 % = amber. */
 export function dtTone(pct) {
   if (pct > 100) return 'red'
   if (pct > 90.5 || pct < -40) return 'amber'
@@ -92,7 +93,7 @@ export const TONE = {
   amber: { c: '#b37511', bg: '#fbf1dc', label: 'Watch' },
   red: { c: '#c0452f', bg: '#fbe9e5', label: 'Overload' },
 }
-export const dtPct = (sim, dt, stepIdx, scen = 'withVpp') => 100 * sim[scen].steps[stepIdx].dtNet[dt] / DT_RATING[dt]
+export const dtPct = (sim, dt, stepIdx, scen = 'withVpp') => dtLoadPct(sim[scen].steps[stepIdx].dtNet[dt], dt)
 
 /** Threshold alerts at one step. */
 export const DEFAULT_THRESHOLDS = { exportKw: 2, exportMin: 30, dtPct: 90, reversePct: 40, reserveMargin: 0, heartbeat: 2 }
@@ -111,7 +112,7 @@ export function alertsAt(sim, stepIdx, th) {
   })
   if (exporters) out.push({ kind: 'Home export', level: 'amber', text: `${exporters} homes exporting > ${th.exportKw} kW for ${th.exportMin}+ min` })
   s.dtNet.forEach((n, d) => {
-    const pct = (n / DT_RATING[d]) * 100
+    const pct = dtLoadPct(n, d)
     if (pct >= th.dtPct) out.push({ kind: 'DT loading', level: pct > 100 ? 'red' : 'amber', text: `DT-${d + 1} at ${pct.toFixed(0)}% (limit ${th.dtPct}%)` })
     if (-pct >= th.reversePct) out.push({ kind: 'Reverse flow', level: 'amber', text: `DT-${d + 1} exporting ${(-pct).toFixed(0)}% of rating` })
   })
@@ -121,6 +122,23 @@ export function alertsAt(sim, stepIdx, th) {
     if (b.controllable && s.soc[h.id - 1] <= Math.max(b.floor, b.reserve) + th.reserveMargin / 100 + 0.005) atReserve++
   })
   if (atReserve) out.push({ kind: 'Reserve', level: 'grey', text: `${atReserve} batteries at their owner reserve — excluded` })
-  if (s.hr >= MATCH_HR + th.heartbeat * 0.25) out.push({ kind: 'Comms', level: 'grey', text: `Home #${SPECIAL.COMMS}: no heartbeat for ${th.heartbeat}+ cycles — safe local mode` })
+  FAILURES.offline.forEach(f => {
+    if (s.hr >= f.fromHr + th.heartbeat * DT_H - 1e-9) out.push({ kind: 'Comms', level: 'grey', text: `Home #${f.id}: no heartbeat for ${th.heartbeat}+ cycles — safe local mode` })
+  })
   return out
+}
+
+// ---------- settlement ledger notes (shared by the DISCOM and My Home pages) ----------
+export const VERDICT_NOTE = {
+  offline: 'no heartbeat — safe local mode, counted as zero',
+  standby: 'standby — eligible, not needed tonight',
+  reserve: 'reserve protected — not asked to discharge',
+  low: 'too little energy above reserve — not asked',
+}
+/** Ledger note for a dispatched home. */
+export function perHomeNote(p, fmt) {
+  if (p.droppedOut) return `stopped responding mid-event — ${p.gapSteps * 15} min without telemetry counted as zero`
+  if (p.replanStep != null) return `called by the replan at ${fmt(p.replanStep / 4)}`
+  if (p.partial) return 'delivered only part of each setpoint (inverter limit) — paid for what was measured'
+  return ''
 }

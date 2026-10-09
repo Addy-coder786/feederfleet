@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { buildSimulation } from './sim/engine.js'
+import { buildSimulation, SCENARIOS, DEFAULT_SCENARIO_ID, N_HOMES } from './sim/engine.js'
+import { PILOT, FEEDER_LABEL } from './config/pilot.js'
+import NoEventNotice from './components/NoEventNotice.jsx'
+import teamLogo from './assets/bitflare-logo.jpg'
 import { useDemo } from './story.js'
 import { fmtHr } from './sim/model.js'
 import OverviewPage from './pages/OverviewPage.jsx'
@@ -9,6 +12,8 @@ import HomePage from './pages/HomePage.jsx'
 import ImpactPage from './pages/ImpactPage.jsx'
 import RoadmapPage from './pages/RoadmapPage.jsx'
 
+// views whose story needs a DT event in the chosen scenario
+const NEEDS_EVENT = ['overview', 'community', 'discom', 'home']
 const VIEWS = [['overview', 'Overview'], ['community', 'Community'], ['discom', 'DISCOM'], ['home', 'My Home'], ['impact', 'Impact'], ['roadmap', 'Roadmap']]
 
 function initialView() {
@@ -18,6 +23,13 @@ function initialView() {
     const v = q || h || localStorage.getItem('ff.view')
     return VIEWS.some(([k]) => k === v) ? v : 'community'
   } catch { return 'community' }
+}
+
+function initialScenario() {
+  try {
+    const q = new URLSearchParams(window.location.search).get('scenario')
+    return SCENARIOS[q] ? q : DEFAULT_SCENARIO_ID
+  } catch { return DEFAULT_SCENARIO_ID }
 }
 
 export default function App() {
@@ -30,13 +42,14 @@ export default function App() {
       return { reserve: Object.fromEntries(q.split(',').map(x => x.split(':')).map(([i, r]) => [+i, Math.min(0.95, Math.max(0.1, +r))])) }
     } catch { return { reserve: {} } }
   })
-  const sim = useMemo(() => buildSimulation(20260927, overrides), [overrides])
+  const [scenarioId, setScenarioId] = useState(initialScenario)
+  const sim = useMemo(() => buildSimulation(undefined, overrides, scenarioId), [overrides, scenarioId])
   const setReserve = (id, r) => setOverrides(o => ({ reserve: { ...o.reserve, [id]: r } }))
   const resetReserves = () => setOverrides({ reserve: {} })
   const demo = useDemo()
   const [view, setView] = useState(initialView)
   const [homeId, setHomeId] = useState(() => {
-    try { const v = +new URLSearchParams(window.location.search).get('home'); return v >= 1 && v <= 500 ? v : 137 } catch { return 137 }
+    try { const v = +new URLSearchParams(window.location.search).get('home'); return v >= 1 && v <= N_HOMES ? v : 137 } catch { return 137 }
   })
   useEffect(() => {
     try { localStorage.setItem('ff.view', view) } catch { /* storage unavailable */ }
@@ -55,6 +68,10 @@ export default function App() {
             </svg>
             <span className="font-display text-[17px] font-extrabold tracking-tight text-fg">FeederFleet</span>
           </button>
+          <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-white py-0.5 pl-0.5 pr-0.5 sm:pr-2.5" title="Made by Team BIT FLARE — Bright minds, bold code">
+            <img src={teamLogo} alt="Team BIT FLARE logo" width="24" height="24" className="h-6 w-6 rounded-full" />
+            <span className="hidden whitespace-nowrap text-[11px] text-dim sm:inline">Made by <b className="font-semibold text-fg">Team BIT FLARE</b></span>
+          </div>
           <nav className="-mb-px flex overflow-x-auto" aria-label="Main">
             {VIEWS.map(([k, label]) => (
               <button key={k} onClick={() => go(k)}
@@ -65,23 +82,31 @@ export default function App() {
           </nav>
           <div className="ml-auto hidden items-center gap-3 md:flex">
             <span className="font-mono text-xs text-dim">{demo.started ? `Demo ${fmtHr(demo.hour)}` : ''}</span>
-            <span className="rounded border border-line px-2 py-1 text-[11px] text-dim">Hypothetical Gujarat 11 kV feeder — <span className="font-semibold text-[#7a520c]">🖥 simulated</span></span>
+            <label className="flex items-center gap-1.5 text-[11px] text-dim">
+              <span className="sr-only sm:not-sr-only">Synthetic day</span>
+              <select value={scenarioId} onChange={e => setScenarioId(e.target.value)} className="inp py-1 text-[11px]" aria-label="Synthetic day scenario">
+                {Object.values(SCENARIOS).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </label>
+            <span className="rounded border border-line px-2 py-1 text-[11px] text-dim">{FEEDER_LABEL} — <span className="font-semibold text-[#7a520c]">🖥 simulated</span></span>
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-[1680px] px-4 pb-10 pt-3 sm:px-6">
+        {!sim.hero && NEEDS_EVENT.includes(view) ? <NoEventNotice sim={sim} go={go} onDefault={() => setScenarioId(DEFAULT_SCENARIO_ID)} /> : <>
         {view === 'overview' && <OverviewPage sim={sim} go={go} demo={demo} />}
         {view === 'community' && <CommunityPage sim={sim} demo={demo} setReserve={setReserve} resetReserves={resetReserves} overrides={overrides} onOpenHome={id => { setHomeId(id); go('home') }} />}
         {view === 'discom' && <DiscomPage sim={sim} demo={demo} />}
         {view === 'home' && <HomePage sim={sim} homeId={homeId} setHomeId={setHomeId} demo={demo} setReserve={setReserve} />}
-        {view === 'impact' && <ImpactPage sim={sim} />}
+        </>}
+        {view === 'impact' && <ImpactPage sim={sim} overrides={overrides} />}
         {view === 'roadmap' && <RoadmapPage />}
       </main>
 
       <footer className="border-t border-line bg-white py-6 text-center text-xs text-dim">
-        <p>FeederFleet · Avartan &rsquo;26, IIT Gandhinagar · Track 8 &ldquo;The Feeder as a Power Plant&rdquo;</p>
-        <p className="mt-1">Concept demo. Hypothetical feeder; every demo number is 🖥 simulated unless marked verified. We claim an India-specific integration of proven mechanisms, not a new VPP.</p>
+        <p>FeederFleet · Avartan &rsquo;26, IIT Gandhinagar · Track 8 &ldquo;The Feeder as a Power Plant&rdquo; · proposed pilot area: {PILOT.short}</p>
+        <p className="mt-1">Concept demo. Synthetic feeder; every demo number is 🖥 simulated unless marked verified. No live {PILOT.utility.short} connection and no control of real equipment. {PILOT.briefNote}</p>
       </footer>
     </div>
   )

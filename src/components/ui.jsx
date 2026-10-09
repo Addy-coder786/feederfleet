@@ -9,8 +9,12 @@ export const TAG = {
   FINDING: 'bg-[#eef3f8] text-[#2f4a5b] border-[#c9d6e0]',
   SECONDARY: 'bg-[#fbf1dc] text-[#7a520c] border-solar/30',
   FACT: 'bg-[#e6f2ea] text-grid border-grid/25',
+  SYNTHETIC: 'bg-[#fbf1dc] text-[#7a520c] border-solar/30',
+  PROXY: 'bg-[#fdf0e6] text-[#8a4a12] border-[#e7c3a0]',
+  UNVERIFIED: 'bg-[#fbe9e5] text-[#9b3322] border-[#e6aa9d]',
+  MISSING: 'bg-[#fbe9e5] text-[#9b3322] border-[#e6aa9d]',
 }
-const TAG_LABEL = { FINDING: 'Research finding', SECONDARY: 'Secondary source' }
+const TAG_LABEL = { FINDING: 'Research finding', SECONDARY: 'Secondary source', PROXY: 'Proxy (other place)', MISSING: 'Not available' }
 export const Tag = ({ t, children }) => <span className={`badge border ${TAG[t] || TAG.ASSUMPTION}`}>{children || TAG_LABEL[t] || t}</span>
 
 export const Status = ({ tone = 'green', children }) => {
